@@ -4,23 +4,11 @@ import queue
 import time
 from copy import deepcopy
 from enum import Enum
-from functools import wraps
 from typing import Dict, List, Tuple, Optional
 
 import numpy as np
 from gavel.logic import logic
 from gavel.logic.logic_utils import substitute_var_in_formula, get_vars_in_formula, convert_to_nnf, convert_to_cnf
-
-
-def _ensure_bool(func):
-    """Wrapper that converts numpy array return values to bool via any()."""
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        res = func(*args, **kwargs)
-        if isinstance(res, np.ndarray):
-            res = bool(res.any())
-        return res
-    return wrapper
 
 
 class ModelCheckerOutcome(Enum):
@@ -147,7 +135,6 @@ class ModelChecker(AbstractModelChecker):
             if self.is_true(sub)
         }
 
-    @_ensure_bool
     def is_true(self, literal: logic.LogicExpression) -> bool:
         """For ~P(...), P(...), a=b, b=a without variables"""
         # assert is_literal(literal)
@@ -167,6 +154,12 @@ class ModelChecker(AbstractModelChecker):
                     res = self.extensions[literal.predicate][literal.arguments[0]]
                 else:
                     res = self.extensions[literal.predicate]
+                    # For 0-ary predicates, the extension may be a numpy array (e.g. when
+                    # the predicate was originally defined as n-ary but is used without
+                    # arguments). Extract a scalar bool using any() so that the result can
+                    # be used safely in boolean contexts.
+                    if isinstance(res, np.ndarray):
+                        res = bool(res.any())
             elif literal.predicate in self.definitions:
                 if np.isnan(
                         self.calculated_extensions[literal.predicate][
